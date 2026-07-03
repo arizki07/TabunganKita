@@ -18,6 +18,8 @@ return new class extends Migration
             $table->string('role');
             $table->timestamp('email_verified_at')->nullable();
             $table->string('password');
+            $table->text('fcm_token')->nullable();
+            $table->boolean('is_notification_enabled')->default(true);
             $table->rememberToken();
             $table->timestamps();
         });

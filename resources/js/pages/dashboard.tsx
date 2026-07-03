@@ -9,6 +9,10 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 
 // Import Recharts untuk Grafik Komponen
+import { messaging, vapidKey } from '@/firebase';
+import axios from 'axios';
+import { getToken, onMessage } from 'firebase/messaging';
+import { useEffect, useState } from 'react';
 import { Area, AreaChart, Cell, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 
 const breadcrumbs: BreadcrumbItem[] = [
@@ -21,7 +25,7 @@ const breadcrumbs: BreadcrumbItem[] = [
 interface Wishlist {
     id: number;
     item_name: string;
-    price: number | string; // Mengikuti properti terupdate Anda
+    price: number | string;
     current_amount: number | string;
 }
 
@@ -36,6 +40,14 @@ interface Transaction {
 }
 
 interface DashboardProps {
+    auth: {
+        user: {
+            id: number;
+            name: string;
+            email: string;
+            is_notification_enabled: boolean; // Field toggle preferensi user
+        };
+    };
     stats: {
         current_balance: number;
         total_income: number;
@@ -43,17 +55,15 @@ interface DashboardProps {
     };
     recentTransactions: Transaction[];
     urgentWishlists: Wishlist[];
-    // Menampung tren bulanan yang dikirim dari controller laravel
     monthlyTrends?: { month: string; income: number; expense: number }[];
-    // Menampung ringkasan kategori untuk pie chart
     categoryData?: { name: string; value: number }[];
 }
 
 export default function Dashboard({
+    auth,
     stats,
     recentTransactions = [],
     urgentWishlists = [],
-    // Data Dummy sebagai fallback jika backend belum mengirimkan datanya
     monthlyTrends = [
         { month: 'Jan', income: 2500000, expense: 1800000 },
         { month: 'Feb', income: 3000000, expense: 2100000 },
@@ -74,24 +84,127 @@ export default function Dashboard({
         return new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', maximumFractionDigits: 0 }).format(value);
     };
 
-    // Palet warna estetik untuk Pie Chart Kategori Pengeluaran
     const COLORS = ['#6366f1', '#f59e0b', '#10b981', '#ef4444', '#8b5cf6'];
+
+    // State untuk memantau status toggle On/Off Notifikasi
+    const [isNotifEnabled, setIsNotifEnabled] = useState<boolean>(auth.user.is_notification_enabled ?? true);
+
+    // Fungsi terpisah untuk mengambil token FCM dari browser
+    const registerFirebaseToken = (registration: ServiceWorkerRegistration) => {
+        Notification.requestPermission().then((permission) => {
+            if (permission === 'granted') {
+                if (!vapidKey) {
+                    console.error('VAPID Key tidak ditemukan di .env');
+                    return;
+                }
+
+                getToken(messaging, {
+                    vapidKey: vapidKey,
+                    serviceWorkerRegistration: registration,
+                })
+                    .then((currentToken) => {
+                        if (currentToken) {
+                            console.log('FCM Token Berhasil Didapat:', currentToken);
+
+                            // Kirim menggunakan Axios (bukan router.post agar aman dari blank page)
+                            axios
+                                .post('/update-fcm-token', { token: currentToken })
+                                .then((response) => {
+                                    console.log('Token sukses disimpan via Axios:', response.data.message);
+                                })
+                                .catch((error) => {
+                                    console.error('Gagal simpan token via Axios:', error);
+                                });
+                        } else {
+                            console.log('Token kosong.');
+                        }
+                    })
+                    .catch((err) => {
+                        console.error('Gagal mengambil token dari Firebase:', err);
+                    });
+            } else {
+                console.warn('Izin notifikasi ditolak oleh user.');
+            }
+        });
+    };
+
+    useEffect(() => {
+        // Hanya daftarkan FCM jika user menyalakan status toggle notifikasinya
+        if (isNotifEnabled && typeof window !== 'undefined' && 'serviceWorker' in navigator) {
+            navigator.serviceWorker
+                .register('/firebase-messaging-sw.js')
+                .then((registration) => {
+                    console.log('Service Worker berhasil didaftarkan dengan scope:', registration.scope);
+                    registerFirebaseToken(registration);
+                })
+                .catch((err) => {
+                    console.error('Gagal mendaftarkan Service Worker:', err);
+                });
+        }
+
+        // Menangani notifikasi saat aplikasi SEDANG DIBUKA (Foreground)
+        const unsubscribe = onMessage(messaging, (payload) => {
+            console.log('Notifikasi masuk (Foreground):', payload);
+            alert(`[Notifikasi] ${payload.notification?.title}: ${payload.notification?.body}`);
+        });
+
+        return () => unsubscribe();
+    }, [isNotifEnabled]); // Trigger ulang useEffect setiap kali nilai toggle berubah
+
+    // Aksi interaktif ketika tombol switch notifikasi diklik
+    const handleToggleChange = () => {
+        const newValue = !isNotifEnabled;
+        setIsNotifEnabled(newValue);
+
+        // Kirim perubahan status ke backend Laravel secara real-time
+        axios
+            .post('/toggle-notification', { enabled: newValue })
+            .then((res) => {
+                console.log(res.data.message);
+            })
+            .catch((err) => {
+                console.error('Gagal mengubah status preferensi notifikasi:', err);
+                setIsNotifEnabled(!newValue); // Kembalikan ke posisi awal jika request gagal
+            });
+    };
 
     return (
         <AppLayout breadcrumbs={breadcrumbs}>
             <Head title="Dashboard Analytics" />
-
             <div className="flex h-full flex-1 flex-col gap-6 p-6">
                 {/* Bagian Selamat Datang / Header */}
-                <div className="flex items-start gap-3">
-                    <div className="mt-1 flex h-10 w-10 items-center justify-center rounded-lg border bg-gradient-to-br from-amber-500/20 to-indigo-500/10 text-amber-500 shadow-sm dark:from-amber-500/10 dark:to-indigo-500/5">
-                        <span className="animate-pulse text-xl">✨</span>
+                <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                    <div className="flex items-start gap-3">
+                        <div className="mt-1 flex h-10 w-10 items-center justify-center rounded-lg border bg-gradient-to-br from-amber-500/20 to-indigo-500/10 text-amber-500 shadow-sm dark:from-amber-500/10 dark:to-indigo-500/5">
+                            <span className="animate-pulse text-xl">✨</span>
+                        </div>
+                        <div>
+                            <h2 className="text-foreground text-2xl font-bold tracking-tight">Ringkasan Tabungan Kita</h2>
+                            <p className="text-muted-foreground mt-1 text-sm">
+                                Selamat datang kembali! Berikut adalah gambaran performa finansial dan perkembangan target impian Anda bulan ini.
+                            </p>
+                        </div>
                     </div>
-                    <div>
-                        <h2 className="text-foreground text-2xl font-bold tracking-tight">Ringkasan Tabungan Kita</h2>
-                        <p className="text-muted-foreground mt-1 text-sm">
-                            Selamat datang kembali! Berikut adalah gambaran performa finansial dan perkembangan target impian Anda bulan ini.
-                        </p>
+
+                    {/* Tombol Toggle Push Notification Custom (Tailwind) */}
+                    <div className="bg-card flex shrink-0 items-center gap-3 rounded-lg border p-3 shadow-sm">
+                        <div className="flex flex-col text-right">
+                            <span className="text-foreground text-xs font-semibold">Push Notification</span>
+                            <span className="text-muted-foreground text-[10px]">{isNotifEnabled ? 'Aktif' : 'Nonaktif'}</span>
+                        </div>
+                        <button
+                            type="button"
+                            onClick={handleToggleChange}
+                            className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                                isNotifEnabled ? 'bg-indigo-600' : 'bg-gray-200 dark:bg-gray-700'
+                            }`}
+                        >
+                            <span
+                                className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                                    isNotifEnabled ? 'translate-x-5' : 'translate-x-0'
+                                }`}
+                            />
+                        </button>
                     </div>
                 </div>
 
@@ -144,9 +257,9 @@ export default function Dashboard({
                     </Card>
                 </div>
 
-                {/* ================= BARU: SECTION GRAPH / CHARTS ================= */}
+                {/* SECTION GRAPH / CHARTS */}
                 <div className="grid gap-6 md:grid-cols-3">
-                    {/* Grafik 1: Tren Arus Kas Masuk & Keluar (Mengambil 2 Kolom) */}
+                    {/* Grafik 1: Tren Arus Kas */}
                     <Card className="shadow-sm md:col-span-2">
                         <CardHeader>
                             <CardTitle className="text-base font-semibold">Analisis Arus Kas Bulanan</CardTitle>
@@ -198,7 +311,7 @@ export default function Dashboard({
                         </CardContent>
                     </Card>
 
-                    {/* Grafik 2: Distribusi Kategori Pengeluaran (Mengambil 1 Kolom) */}
+                    {/* Grafik 2: Distribusi Kategori Pengeluaran */}
                     <Card className="shadow-sm md:col-span-1">
                         <CardHeader>
                             <CardTitle className="text-base font-semibold">Kategori Pengeluaran</CardTitle>
@@ -217,7 +330,6 @@ export default function Dashboard({
                                     </PieChart>
                                 </ResponsiveContainer>
                             </div>
-                            {/* Keterangan Warna Kategori */}
                             <div className="mt-4 grid w-full grid-cols-2 gap-x-4 gap-y-1.5 text-xs">
                                 {categoryData.map((entry, index) => (
                                     <div key={entry.name} className="flex min-w-0 items-center gap-1.5">
@@ -235,7 +347,7 @@ export default function Dashboard({
 
                 {/* Grid Bawah: Riwayat Transaksi & Target Wishlist */}
                 <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-7">
-                    {/* Panel Kiri: 5 Transaksi Terbaru (Mengambil 4 Kolom) */}
+                    {/* Panel Kiri: 5 Transaksi Terbaru */}
                     <Card className="shadow-sm md:col-span-4">
                         <CardHeader className="flex flex-row items-center justify-between">
                             <div>
@@ -287,7 +399,7 @@ export default function Dashboard({
                         </CardContent>
                     </Card>
 
-                    {/* Panel Kanan: Target Wishlist Teratas (Mengambil 3 Kolom) */}
+                    {/* Panel Kanan: Target Wishlist Teratas */}
                     <Card className="shadow-sm md:col-span-3">
                         <CardHeader className="flex flex-row items-center justify-between">
                             <div>
@@ -311,7 +423,6 @@ export default function Dashboard({
                                         const current =
                                             typeof wl.current_amount === 'string' ? parseFloat(wl.current_amount) : (wl.current_amount ?? 0);
                                         const target = typeof wl.price === 'string' ? parseFloat(wl.price) : wl.price;
-
                                         const percentage = target > 0 ? Math.min(Math.round((current / target) * 100), 100) : 0;
 
                                         return (
@@ -320,14 +431,12 @@ export default function Dashboard({
                                                     <span className="text-foreground max-w-[160px] truncate font-semibold">{wl.item_name}</span>
                                                     <span className="text-xs font-bold text-amber-500">{percentage}%</span>
                                                 </div>
-
                                                 <div className="bg-muted h-2 w-full overflow-hidden rounded-full">
                                                     <div
                                                         className="h-full rounded-full bg-gradient-to-r from-amber-500 to-orange-400 transition-all duration-500"
                                                         style={{ width: `${percentage}%` }}
                                                     />
                                                 </div>
-
                                                 <div className="text-muted-foreground flex justify-between text-[11px]">
                                                     <span>Tercicil: {formatRupiah(current)}</span>
                                                     <span>Harga: {formatRupiah(target)}</span>

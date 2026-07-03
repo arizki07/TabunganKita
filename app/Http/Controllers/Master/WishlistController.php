@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Master;
 
+use App\Helpers\NotificationHelper;
 use App\Http\Controllers\Controller;
 use App\Models\Wishlist;
 use Illuminate\Http\Request;
@@ -22,22 +23,21 @@ class WishlistController extends Controller
             'notes'        => 'nullable|string',
         ]);
 
-        $validated['user_id'] = Auth::id();
+        $userId = Auth::id();
+        $validated['user_id'] = $userId;
         $validated['is_purchased'] = false;
 
         if ($request->hasFile('image')) {
-            $path = $request->file('image')->store('wishlists', 'public');
-            $validated['image'] = $path;
+            $validated['image'] = $request->file('image')->store('wishlists', 'public');
         }
 
-        Wishlist::create($validated);
+        $wishlist = Wishlist::create($validated);
+
+        NotificationHelper::sendToUser($userId, 'Target Impian Baru! 🎯', "Menambahkan '{$wishlist->item_name}' ke dalam daftar impian Anda.");
 
         return redirect()->back()->with('success', 'Barang impian berhasil ditambahkan!');
     }
 
-    /**
-     * Update data (Mendukung Multipart FormData Method Spoofing '_method' = 'PUT')
-     */
     public function update(Request $request, Wishlist $wishlist)
     {
         $validated = $request->validate([
@@ -46,7 +46,7 @@ class WishlistController extends Controller
             'target_date'  => 'nullable|date',
             'priority'     => 'required|in:low,medium,high',
             'product_url'  => 'nullable|url|max:255',
-            'image'        => 'nullable|mixed', // Bisa berupa file baru atau string path lama
+            'image'        => 'nullable|mixed',
             'notes'        => 'nullable|string',
         ]);
 
@@ -56,36 +56,39 @@ class WishlistController extends Controller
             }
             $validated['image'] = $request->file('image')->store('wishlists', 'public');
         } else {
-            unset($validated['image']); // Tetapkan gambar lama jika tidak diubah
+            unset($validated['image']);
         }
 
         $wishlist->update($validated);
 
+        NotificationHelper::sendToUser($wishlist->user_id, 'Wishlist Diperbarui ✏️', "'{$wishlist->item_name}' telah berhasil diperbarui.");
+
         return redirect()->back()->with('success', 'Barang impian berhasil diperbarui!');
     }
 
-    /**
-     * Hapus data beserta file fisiknya
-     */
     public function destroy(Wishlist $wishlist)
     {
+        $userId = $wishlist->user_id;
+        $name = $wishlist->item_name;
+
         if ($wishlist->image) {
             Storage::disk('public')->delete($wishlist->image);
         }
-
         $wishlist->delete();
+
+        NotificationHelper::sendToUser($userId, 'Wishlist Dihapus 🗑️', "Barang impian '{$name}' dihapus dari daftar.");
 
         return redirect()->back()->with('success', 'Barang impian berhasil dihapus!');
     }
 
-    /**
-     * Ubah status is_purchased secara instan
-     */
     public function togglePurchase(Wishlist $wishlist)
     {
         $wishlist->is_purchased = !$wishlist->is_purchased;
         $wishlist->purchased_at = $wishlist->is_purchased ? now() : null;
         $wishlist->save();
+
+        $pesan = $wishlist->is_purchased ? "Selamat! 🎉 Impian '{$wishlist->item_name}' telah terbeli!" : "Status pembelian '{$wishlist->item_name}' dibatalkan.";
+        NotificationHelper::sendToUser($wishlist->user_id, 'Status Wishlist Berubah 🎯', $pesan);
 
         return redirect()->back()->with('success', 'Status pembelian berhasil diperbarui!');
     }

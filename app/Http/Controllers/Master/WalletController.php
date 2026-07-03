@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Master;
 
+use App\Helpers\NotificationHelper;
 use App\Http\Controllers\Controller;
 use App\Models\Wallet;
 use Illuminate\Http\Request;
@@ -23,27 +24,25 @@ class WalletController extends Controller
 
     public function store(Request $request)
     {
-        // 1. Ubah validasi agar menerima tipe baru dan izinkan nilai minus khusus untuk paylater
         $request->validate([
             'wallet_name' => 'required|string|max:255',
-            'type'        => 'required|in:bank,cash,e-wallet,credit_card,paylater_loan', // <-- Tambahkan paylater_loan di sini
-            'balance'     => $request->type === 'paylater_loan'
-                ? 'required|numeric' // <-- Kalau paylater, boleh minus (hapus min:0)
-                : 'required|numeric|min:0', // <-- Kalau dompet biasa, wajib minimal 0
+            'type'        => 'required|in:bank,cash,e-wallet,credit_card,paylater_loan',
+            'balance'     => $request->type === 'paylater_loan' ? 'required|numeric' : 'required|numeric|min:0',
             'color_hex'   => 'required|string|max:7',
             'notes'       => 'nullable|string|max:255',
         ]);
 
-        // 2. Ambil semua data inputan
         $data = $request->all();
-        $data['user_id'] = auth()->id() ?? 1;
+        $userId = auth()->id() ?? 1;
+        $data['user_id'] = $userId;
 
-        // 3. Pastikan nilainya disimpan sebagai negatif jika tipenya paylater
         if ($data['type'] === 'paylater_loan' && $data['balance'] > 0) {
             $data['balance'] = $data['balance'] * -1;
         }
 
-        Wallet::create($data);
+        $wallet = Wallet::create($data);
+
+        NotificationHelper::sendToUser($userId, 'Kantong Baru Dibuat! 💼', "Kantong '{$wallet->wallet_name}' berhasil ditambahkan ke sistem.");
 
         return redirect()->back()->with('success', 'Kantong baru berhasil dibuat!');
     }
@@ -52,22 +51,27 @@ class WalletController extends Controller
     {
         $request->validate([
             'wallet_name' => 'required|string|max:255',
-            'type'        => 'required|in:bank,cash,e-wallet,credit_card,paylater_loan', // <-- Tambahkan juga di sini
+            'type'        => 'required|in:bank,cash,e-wallet,credit_card,paylater_loan',
             'color_hex'   => 'required|string|max:7',
             'notes'       => 'nullable|string|max:255',
         ]);
 
         $wallet->update($request->all());
 
+        NotificationHelper::sendToUser($wallet->user_id, 'Kantong Diperbarui ✏️', "Informasi kantong '{$wallet->wallet_name}' telah diubah.");
+
         return redirect()->back()->with('success', 'Data kantong berhasil diperbarui!');
     }
 
-    /**
-     * Hapus kantong tabungan
-     */
     public function destroy(Wallet $wallet)
     {
+        $userId = $wallet->user_id;
+        $name = $wallet->wallet_name;
+
         $wallet->delete();
+
+        NotificationHelper::sendToUser($userId, 'Kantong Dihapus 🗑️', "Kantong '{$name}' telah dihapus dari sistem.");
+
         return redirect()->back()->with('success', 'Kantong berhasil dihapus dari sistem!');
     }
 }

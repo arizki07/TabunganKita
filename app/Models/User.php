@@ -21,6 +21,8 @@ class User extends Authenticatable
         'name',
         'email',
         'password',
+        'fcm_token',
+        'is_notification_enabled',
     ];
 
     /**

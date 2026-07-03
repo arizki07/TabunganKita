@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Master;
 
+use App\Helpers\NotificationHelper;
 use App\Http\Controllers\Controller;
 use App\Models\Transaction;
 use App\Models\Wallet;
@@ -10,9 +11,6 @@ use Illuminate\Support\Facades\Storage;
 
 class TransactionController extends Controller
 {
-    /**
-     * Simpan transaksi baru
-     */
     public function store(Request $request)
     {
         $validated = $request->validate([
@@ -28,27 +26,31 @@ class TransactionController extends Controller
             'attachment'       => 'nullable|image|max:2048'
         ]);
 
-        $validated['user_id'] = auth()->id() ?? 1;
+        $userId = auth()->id() ?? 1;
+        $validated['user_id'] = $userId;
 
         if ($request->hasFile('attachment')) {
             $validated['attachment'] = $request->file('attachment')->store('attachments', 'public');
         }
 
-        // Eksekusi Pemotongan / Penambahan Saldo Kantong otomatis
         $wallet = Wallet::findOrFail($validated['wallet_id']);
         if ($validated['type'] === 'income') {
             $wallet->increment('balance', $validated['amount']);
+            $simbol = "➕ Pemasukan";
+            $teksPesan = "Dana masuk sebesar Rp " . number_format($validated['amount'], 0, ',', '.') . " untuk '{$validated['title']}'.";
         } else {
             $wallet->decrement('balance', $validated['amount']);
+            $simbol = "➖ Pengeluaran";
+            $teksPesan = "Dana keluar sebesar Rp " . number_format($validated['amount'], 0, ',', '.') . " untuk '{$validated['title']}'.";
         }
 
         Transaction::create($validated);
+
+        NotificationHelper::sendToUser($userId, $simbol, $teksPesan, '/transactions');
+
         return redirect()->back()->with('success', 'Transaksi berhasil dicatat dan saldo kantong terupdate!');
     }
 
-    /**
-     * Update transaksi
-     */
     public function update(Request $request, Transaction $transaction)
     {
         $validated = $request->validate([
@@ -73,14 +75,17 @@ class TransactionController extends Controller
         }
 
         $transaction->update($validated);
+
+        NotificationHelper::sendToUser($transaction->user_id, 'Transaksi Diperbarui 📝', "Catatan transaksi '{$transaction->title}' berhasil diubah.");
+
         return redirect()->back()->with('success', 'Transaksi berhasil diperbarui!');
     }
 
-    /**
-     * Hapus transaksi beserta lampirannya
-     */
     public function destroy(Transaction $transaction)
     {
+        $userId = $transaction->user_id;
+        $title = $transaction->title;
+
         if ($transaction->attachment) {
             Storage::disk('public')->delete($transaction->attachment);
         }
@@ -97,6 +102,9 @@ class TransactionController extends Controller
         }
 
         $transaction->delete();
+
+        NotificationHelper::sendToUser($userId, 'Transaksi Dihapus 🗑️', "Catatan transaksi '{$title}' telah dihapus.");
+
         return redirect()->back()->with('success', 'Transaksi berhasil dihapus!');
     }
 }

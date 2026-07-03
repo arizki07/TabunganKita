@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\Master\WalletController;
+use App\Http\Controllers\NotificationController;
 use App\Models\Transaction;
 use App\Models\Wishlist;
 use Carbon\Carbon;
@@ -155,6 +156,9 @@ Route::middleware(['auth'])->group(function () {
     })->name('transaction.report');
 
     Route::resource('/wallet', WalletController::class);
+    Route::post('/update-fcm-token', [NotificationController::class, 'updateToken'])->name('fcm.update');
+    Route::post('/toggle-notification', [NotificationController::class, 'toggleNotification'])->name('fcm.toggle');
+    Route::get('/test-notification', [NotificationController::class, 'testSendNotification'])->name('fcm.test');
 });
 
 require __DIR__ . '/settings.php';
