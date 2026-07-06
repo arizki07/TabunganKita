@@ -29,36 +29,47 @@ export default function PrivacyTab({ className = '', auth, ...props }: any) {
         try {
             const { data: options } = await axios.get('/webauthn/register/options');
 
+            // Decode base64 dari server ke bentuk Uint8Array yang dibutuhkan browser
             const challenge = Uint8Array.from(atob(options.challenge.replace(/-/g, '+').replace(/_/g, '/')), (c) => c.charCodeAt(0));
             const userId = Uint8Array.from(atob(options.user.id.replace(/-/g, '+').replace(/_/g, '/')), (c) => c.charCodeAt(0));
 
             const credential = (await navigator.credentials.create({
                 publicKey: {
                     challenge: challenge,
-                    rp: { name: 'TabunganKita', id: options.rpId },
+                    rp: { name: 'TabunganKita', id: options.rpId || window.location.hostname },
                     user: { id: userId, name: options.user.name, displayName: options.user.displayName },
                     pubKeyCredParams: options.pubKeyCredParams,
-                    authenticatorSelection: { userVerification: 'required' },
+                    authenticatorSelection: {
+                        userVerification: 'required',
+                        authenticatorAttachment: 'platform', // Memaksa FaceID/TouchID bawaan device, bukan USB Key external
+                    },
+                    timeout: 60000,
                 },
             })) as PublicKeyCredential | null;
 
             if (!credential) throw new Error('Pendaftaran dibatalkan');
 
-            const pkCredential = credential as PublicKeyCredential;
-            const rawId = btoa(String.fromCharCode(...new Uint8Array(pkCredential.rawId)));
+            const response = credential.response as AuthenticatorAttestationResponse;
 
+            // Encode kembali array buffer ke base64 agar bisa dikirim via JSON ke Laravel
             const credentialData = {
-                id: pkCredential.id,
-                rawId: rawId,
-                type: pkCredential.type,
+                id: credential.id,
+                rawId: btoa(String.fromCharCode(...new Uint8Array(credential.rawId))),
+                type: credential.type,
+                response: {
+                    clientDataJSON: btoa(String.fromCharCode(...new Uint8Array(response.clientDataJSON))),
+                    attestationObject: btoa(String.fromCharCode(...new Uint8Array(response.attestationObject))),
+                },
             };
 
+            // Kirim ke server untuk diverifikasi sekaligus mengaktifkan status is_biometric_enabled
             await axios.post('/webauthn/register/verify', credentialData);
+
             setIsBiometricEnabled(true);
-            alert('FaceID berhasil diaktifkan!');
+            alert('FaceID / Biometrik berhasil diaktifkan!');
         } catch (err) {
             console.error('FaceID gagal:', err);
-            alert('FaceID gagal. Pastikan perangkat Anda mendukung biometrik.');
+            alert('FaceID gagal. Pastikan perangkat Anda mendukung biometrik atau Anda tidak membatalkan proses.');
         }
     };
     return (

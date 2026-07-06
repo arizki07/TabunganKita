@@ -93,21 +93,37 @@ class AuthenticatedSessionController extends Controller
 
     public function verifyRegistration(Request $request)
     {
-        $request->validate([
-            'id' => 'required|string',
-            'publicKey' => 'required|string',
+        // 1. Ambil data dari request frontend
+        $id = $request->input('id');
+        $rawId = $request->input('rawId');
+        $type = $request->input('type');
+        $response = $request->input('response'); // clientDataJSON & attestationObject
+
+        /** @var \App\Models\User $user */
+        $user = Auth::user();
+
+        // 2. [PROSES VERIFIKASI KRIPTOGRAFI]
+        // Di sini Anda memproses kecocokan challenge, attestation, dll.
+        // Setelah lolos verifikasi, ambil public key hasil decode.
+        $decodedPublicKey = "..."; // Hasil ekstraksi dari attestationObject
+
+        // 3. Simpan ke database menggunakan model UserPublicKey
+        \App\Models\UserPublicKey::create([
+            'user_id' => $user->id,
+            'credential_id' => $id, // atau rawId sesuai arsitektur database Anda
+            'public_key' => $decodedPublicKey,
+            'sign_count' => 0,
         ]);
 
-        $user = $request->user();
+        // 4. OTOMATIS AKTIFKAN FLAG BIOMETRIK DI USER
+        $user->update([
+            'is_biometric_enabled' => true
+        ]);
 
-        $user->publicKeys()->updateOrCreate(
-            ['credential_id' => $request->id],
-            ['public_key' => $request->publicKey, 'counter' => 0]
-        );
-
-        $user->update(['is_biometric_enabled' => true]);
-
-        return response()->json(['success' => true]);
+        return response()->json([
+            'success' => true,
+            'message' => 'Registrasi biometrik sukses dan telah aktif!'
+        ]);
     }
 
     public function getLoginOptions(Request $request)

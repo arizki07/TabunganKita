@@ -67,7 +67,19 @@ class ProfileController extends Controller
             'enabled' => 'required|boolean',
         ]);
 
+        /** @var \App\Models\User|\Illuminate\Contracts\Auth\Authenticatable $user */
         $user = Auth::user();
+
+        // Memeriksa apakah user sudah punya data public key terdaftar sebelum mengaktifkan
+        // Jika Intelephense masih garis merah, kita panggil sebagai property collection atau gunakan check manual
+        $hasKeys = \App\Models\UserPublicKey::where('user_id', $user->id)->exists();
+
+        if ($request->enabled && !$hasKeys) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Silakan lakukan registrasi biometrik terlebih dahulu.'
+            ], 400);
+        }
 
         $user->update([
             'is_biometric_enabled' => $request->enabled
@@ -75,7 +87,7 @@ class ProfileController extends Controller
 
         return response()->json([
             'success' => true,
-            'message' => 'Status biometrik berhasil diperbarui'
+            'message' => $request->enabled ? 'Biometrik diaktifkan.' : 'Biometrik dinonaktifkan.'
         ]);
     }
 }
