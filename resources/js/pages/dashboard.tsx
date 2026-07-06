@@ -12,7 +12,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { messaging } from '@/firebase';
 import axios from 'axios';
 import { getToken, onMessage } from 'firebase/messaging';
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { Area, AreaChart, Cell, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 
 const breadcrumbs: BreadcrumbItem[] = [
@@ -60,6 +60,7 @@ interface DashboardProps {
 }
 
 export default function Dashboard({
+    auth,
     stats,
     recentTransactions = [],
     urgentWishlists = [],
@@ -85,6 +86,7 @@ export default function Dashboard({
 
     const COLORS = ['#6366f1', '#f59e0b', '#10b981', '#ef4444', '#8b5cf6'];
 
+    const [isNotifEnabled, setIsNotifEnabled] = useState<boolean>(auth.user.is_notification_enabled ?? true);
     const vapidKey = import.meta.env.VITE_FIREBASE_VAPID_KEY;
 
     // 1. Fungsi untuk mendaftarkan Token FCM ke Backend
