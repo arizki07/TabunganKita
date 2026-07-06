@@ -23,6 +23,7 @@ class User extends Authenticatable
         'password',
         'fcm_token',
         'is_notification_enabled',
+        'is_biometric_enabled',
     ];
 
     /**
@@ -46,5 +47,10 @@ class User extends Authenticatable
             'email_verified_at' => 'datetime',
             'password' => 'hashed',
         ];
+    }
+
+    public function publicKeys()
+    {
+        return $this->hasMany(UserPublicKey::class);
     }
 }

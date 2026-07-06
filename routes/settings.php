@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\Settings\PasswordController;
 use App\Http\Controllers\Settings\ProfileController;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
 
@@ -15,7 +16,16 @@ Route::middleware('auth')->group(function () {
     Route::get('settings/password', [PasswordController::class, 'edit'])->name('password.edit');
     Route::put('settings/password', [PasswordController::class, 'update'])->name('password.update');
 
+    Route::post('/toggle-biometric', [ProfileController::class, 'toggleBiometric']);
+
     Route::get('settings/appearance', function () {
         return Inertia::render('settings/appearance');
     })->name('appearance');
+    Route::get('settings/privacy', function (Request $request) {
+        return Inertia::render('settings/privacy', [
+            'auth' => [
+                'user' => $request->user(),
+            ],
+        ]);
+    })->name('privacy');
 });

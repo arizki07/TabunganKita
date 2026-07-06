@@ -10,6 +10,13 @@ use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
 use Inertia\Response;
+use Webauthn\PublicKeyCredentialCreationOptions;
+use Webauthn\PublicKeyCredentialRpEntity;
+use Webauthn\PublicKeyCredentialUserEntity;
+use Webauthn\AuthenticatorSelectionCriteria;
+use Webauthn\PublicKeyCredentialParameters;
+use Webauthn\AuthenticationExtensions\AuthenticationExtensionsClientInputs;
+use ParagonIE\ConstantTime\Base64UrlSafe;
 
 class AuthenticatedSessionController extends Controller
 {
@@ -47,5 +54,74 @@ class AuthenticatedSessionController extends Controller
         $request->session()->regenerateToken();
 
         return redirect('/');
+    }
+
+    public function getRegistrationOptions(Request $request)
+    {
+        $user = $request->user();
+
+        $rpEntity = new PublicKeyCredentialRpEntity('TabunganKita', 'tabungankita.ahmadrizki.my.id');
+
+        $userEntity = new PublicKeyCredentialUserEntity(
+            (string) $user->id,
+            (string) $user->id,
+            $user->name
+        );
+
+        $challenge = random_bytes(32);
+
+        $creationOptions = new PublicKeyCredentialCreationOptions(
+            $rpEntity,
+            $userEntity,
+            $challenge,
+            [new PublicKeyCredentialParameters('public-key', -7)]
+        );
+
+        return response()->json([
+            'challenge' => Base64UrlSafe::encodeUnpadded($challenge),
+            'rpId' => 'tabungankita.ahmadrizki.my.id',
+            'user' => [
+                'id' => Base64UrlSafe::encodeUnpadded((string)$user->id),
+                'name' => $user->email,
+                'displayName' => $user->name,
+            ],
+            'pubKeyCredParams' => [
+                ['type' => 'public-key', 'alg' => -7]
+            ]
+        ]);
+    }
+
+    public function verifyRegistration(Request $request)
+    {
+        $request->validate([
+            'id' => 'required|string',
+            'publicKey' => 'required|string',
+        ]);
+
+        $user = $request->user();
+
+        $user->publicKeys()->updateOrCreate(
+            ['credential_id' => $request->id],
+            ['public_key' => $request->publicKey, 'counter' => 0]
+        );
+
+        $user->update(['is_biometric_enabled' => true]);
+
+        return response()->json(['success' => true]);
+    }
+
+    public function getLoginOptions(Request $request)
+    {
+        $user = \App\Models\User::where('email', $request->email)->firstOrFail();
+
+        $allowedCredentials = $user->publicKeys()->get()->map(function ($key) {
+            return ['type' => 'public-key', 'id' => base64_decode($key->credential_id)];
+        })->toArray();
+
+        return response()->json([
+            'challenge' => \ParagonIE\ConstantTime\Base64UrlSafe::encodeUnpadded(random_bytes(32)),
+            'rpId' => 'tabungankita.ahmadrizki.my.id',
+            'allowCredentials' => $allowedCredentials,
+        ]);
     }
 }

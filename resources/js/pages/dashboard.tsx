@@ -12,7 +12,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { messaging } from '@/firebase';
 import axios from 'axios';
 import { getToken, onMessage } from 'firebase/messaging';
-import { useEffect, useState } from 'react';
+import { useEffect } from 'react';
 import { Area, AreaChart, Cell, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 
 const breadcrumbs: BreadcrumbItem[] = [
@@ -60,7 +60,6 @@ interface DashboardProps {
 }
 
 export default function Dashboard({
-    auth,
     stats,
     recentTransactions = [],
     urgentWishlists = [],
@@ -86,7 +85,6 @@ export default function Dashboard({
 
     const COLORS = ['#6366f1', '#f59e0b', '#10b981', '#ef4444', '#8b5cf6'];
 
-    const [isNotifEnabled, setIsNotifEnabled] = useState<boolean>(auth.user.is_notification_enabled ?? true);
     const vapidKey = import.meta.env.VITE_FIREBASE_VAPID_KEY;
 
     // 1. Fungsi untuk mendaftarkan Token FCM ke Backend
@@ -136,20 +134,6 @@ export default function Dashboard({
         return () => unsubscribe();
     }, [isNotifEnabled]);
 
-    // 3. Handle Toggle Switch
-    const handleToggleChange = () => {
-        const newValue = !isNotifEnabled;
-        setIsNotifEnabled(newValue);
-
-        axios
-            .post('/toggle-notification', { enabled: newValue })
-            .then((res) => console.log('Status notif diubah:', res.data))
-            .catch((err) => {
-                console.error('Error:', err);
-                setIsNotifEnabled(!newValue); // Rollback jika gagal
-            });
-    };
-
     return (
         <AppLayout breadcrumbs={breadcrumbs}>
             <Head title="Dashboard Analytics" />
@@ -166,27 +150,6 @@ export default function Dashboard({
                                 Selamat datang kembali! Berikut adalah gambaran performa finansial dan perkembangan target impian Anda bulan ini.
                             </p>
                         </div>
-                    </div>
-
-                    {/* Tombol Toggle Push Notification Custom (Tailwind) */}
-                    <div className="bg-card flex shrink-0 items-center gap-3 rounded-lg border p-3 shadow-sm">
-                        <div className="flex flex-col text-right">
-                            <span className="text-foreground text-xs font-semibold">Push Notification</span>
-                            <span className="text-muted-foreground text-[10px]">{isNotifEnabled ? 'Aktif' : 'Nonaktif'}</span>
-                        </div>
-                        <button
-                            type="button"
-                            onClick={handleToggleChange}
-                            className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
-                                isNotifEnabled ? 'bg-indigo-600' : 'bg-gray-200 dark:bg-gray-700'
-                            }`}
-                        >
-                            <span
-                                className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
-                                    isNotifEnabled ? 'translate-x-5' : 'translate-x-0'
-                                }`}
-                            />
-                        </button>
                     </div>
                 </div>
 

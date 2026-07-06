@@ -60,4 +60,22 @@ class ProfileController extends Controller
 
         return redirect('/');
     }
+
+    public function toggleBiometric(Request $request)
+    {
+        $request->validate([
+            'enabled' => 'required|boolean',
+        ]);
+
+        $user = Auth::user();
+
+        $user->update([
+            'is_biometric_enabled' => $request->enabled
+        ]);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Status biometrik berhasil diperbarui'
+        ]);
+    }
 }

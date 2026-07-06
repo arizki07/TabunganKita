@@ -51,6 +51,10 @@ Route::middleware('auth')->group(function () {
 
     Route::post('confirm-password', [ConfirmablePasswordController::class, 'store']);
 
+    Route::get('/webauthn/register/options', [AuthenticatedSessionController::class, 'getRegistrationOptions']);
+    Route::post('/webauthn/register/verify', [AuthenticatedSessionController::class, 'verifyRegistration']);
+    Route::post('/webauthn/login/verify', [AuthenticatedSessionController::class, 'getLoginOptions']);
+
     Route::post('logout', [AuthenticatedSessionController::class, 'destroy'])
         ->name('logout');
 });

@@ -19,7 +19,8 @@ return new class extends Migration
             $table->timestamp('email_verified_at')->nullable();
             $table->string('password');
             $table->text('fcm_token')->nullable();
-            $table->boolean('is_notification_enabled')->default(true);
+            $table->boolean('is_notification_enabled')->default(false);
+            $table->boolean('is_biometric_enabled')->default(false);
             $table->rememberToken();
             $table->timestamps();
         });
@@ -37,6 +38,15 @@ return new class extends Migration
             $table->text('user_agent')->nullable();
             $table->longText('payload');
             $table->integer('last_activity')->index();
+        });
+
+        Schema::create('user_public_keys', function (Blueprint $table) {
+            $table->id();
+            $table->foreignId('user_id')->constrained()->onDelete('cascade');
+            $table->string('credential_id')->unique(); // ID unik dari iPhone
+            $table->text('public_key'); // Kunci publik
+            $table->unsignedInteger('counter'); // Counter untuk mencegah replay attack
+            $table->timestamps();
         });
     }
 

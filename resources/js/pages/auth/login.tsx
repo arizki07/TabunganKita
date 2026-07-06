@@ -1,6 +1,6 @@
-import { Head, useForm } from '@inertiajs/react';
-import { LoaderCircle } from 'lucide-react';
-import { FormEventHandler } from 'react';
+import { Head, router, useForm } from '@inertiajs/react';
+import { Fingerprint, LoaderCircle } from 'lucide-react';
+import { FormEventHandler, useState } from 'react';
 
 import InputError from '@/components/input-error';
 import TextLink from '@/components/text-link';
@@ -9,7 +9,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import AuthLayout from '@/layouts/auth-layout';
-
+import axios from 'axios';
 interface LoginForm {
     email: string;
     password: string;
@@ -27,6 +27,38 @@ export default function Login({ status, canResetPassword }: LoginProps) {
         password: '',
         remember: false,
     });
+    const [biometricLoading, setBiometricLoading] = useState(false);
+
+    const handleBiometricLogin = async () => {
+        setBiometricLoading(true);
+        try {
+            // 1. Ambil challenge login dari server
+            const { data: options } = await axios.post('/webauthn/login/options', { email: data.email });
+
+            // 2. Panggil FaceID
+            const assertion = (await navigator.credentials.get({
+                publicKey: {
+                    challenge: Uint8Array.from(atob(options.challenge.replace(/-/g, '+').replace(/_/g, '/')), (c) => c.charCodeAt(0)),
+                    allowCredentials: options.allowCredentials,
+                    userVerification: 'required',
+                },
+            })) as PublicKeyCredential;
+
+            const response = await axios.post('/webauthn/login/verify', {
+                id: assertion.id,
+                email: data.email,
+            });
+
+            if (response.data.success) {
+                router.visit(route('dashboard')); // Redirect setelah sukses
+            }
+        } catch (err) {
+            console.error('Login FaceID gagal:', err);
+            alert('Login biometrik gagal.');
+        } finally {
+            setBiometricLoading(false);
+        }
+    };
 
     const submit: FormEventHandler = (e) => {
         e.preventDefault();
@@ -87,6 +119,20 @@ export default function Login({ status, canResetPassword }: LoginProps) {
                     <Button type="submit" className="mt-4 w-full" tabIndex={4} disabled={processing}>
                         {processing && <LoaderCircle className="h-4 w-4 animate-spin" />}
                         Log in
+                    </Button>
+                    {/* Tombol Biometrik */}
+                    <div className="relative">
+                        <div className="absolute inset-0 flex items-center">
+                            <div className="w-full border-t" />
+                        </div>
+                        <div className="relative flex justify-center text-xs uppercase">
+                            <span className="bg-background px-2">Atau</span>
+                        </div>
+                    </div>
+
+                    <Button type="button" variant="outline" className="w-full gap-2" onClick={handleBiometricLogin} disabled={biometricLoading}>
+                        {biometricLoading ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Fingerprint className="h-4 w-4" />}
+                        Login dengan FaceID
                     </Button>
                 </div>
 
