@@ -9,7 +9,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 
 // Import Recharts untuk Grafik Komponen
-import { messaging, vapidKey } from '@/firebase';
+import { messaging } from '@/firebase';
 import axios from 'axios';
 import { getToken, onMessage } from 'firebase/messaging';
 import { useEffect, useState } from 'react';
@@ -86,85 +86,67 @@ export default function Dashboard({
 
     const COLORS = ['#6366f1', '#f59e0b', '#10b981', '#ef4444', '#8b5cf6'];
 
-    // State untuk memantau status toggle On/Off Notifikasi
     const [isNotifEnabled, setIsNotifEnabled] = useState<boolean>(auth.user.is_notification_enabled ?? true);
+    const vapidKey = import.meta.env.VITE_FIREBASE_VAPID_KEY;
 
-    // Fungsi terpisah untuk mengambil token FCM dari browser
+    // 1. Fungsi untuk mendaftarkan Token FCM ke Backend
     const registerFirebaseToken = (registration: ServiceWorkerRegistration) => {
         Notification.requestPermission().then((permission) => {
             if (permission === 'granted') {
-                if (!vapidKey) {
-                    console.error('VAPID Key tidak ditemukan di .env');
-                    return;
-                }
-
                 getToken(messaging, {
                     vapidKey: vapidKey,
                     serviceWorkerRegistration: registration,
                 })
                     .then((currentToken) => {
                         if (currentToken) {
-                            console.log('FCM Token Berhasil Didapat:', currentToken);
-
-                            // Kirim menggunakan Axios (bukan router.post agar aman dari blank page)
                             axios
                                 .post('/update-fcm-token', { token: currentToken })
-                                .then((response) => {
-                                    console.log('Token sukses disimpan via Axios:', response.data.message);
-                                })
-                                .catch((error) => {
-                                    console.error('Gagal simpan token via Axios:', error);
-                                });
-                        } else {
-                            console.log('Token kosong.');
+                                .then((res) => console.log('Token terupdate:', res.data.message))
+                                .catch((err) => console.error('Gagal update token:', err));
                         }
                     })
-                    .catch((err) => {
-                        console.error('Gagal mengambil token dari Firebase:', err);
-                    });
-            } else {
-                console.warn('Izin notifikasi ditolak oleh user.');
+                    .catch((err) => console.error('Error getting token:', err));
             }
         });
     };
 
+    // 2. Efek untuk registrasi Service Worker dan listener Foreground
     useEffect(() => {
-        // Hanya daftarkan FCM jika user menyalakan status toggle notifikasinya
+        // Daftar Service Worker
         if (isNotifEnabled && typeof window !== 'undefined' && 'serviceWorker' in navigator) {
             navigator.serviceWorker
                 .register('/firebase-messaging-sw.js')
                 .then((registration) => {
-                    console.log('Service Worker berhasil didaftarkan dengan scope:', registration.scope);
                     registerFirebaseToken(registration);
                 })
-                .catch((err) => {
-                    console.error('Gagal mendaftarkan Service Worker:', err);
-                });
+                .catch((err) => console.error('SW Registration Failed:', err));
         }
 
-        // Menangani notifikasi saat aplikasi SEDANG DIBUKA (Foreground)
+        // Listener saat aplikasi terbuka (Foreground)
         const unsubscribe = onMessage(messaging, (payload) => {
-            console.log('Notifikasi masuk (Foreground):', payload);
-            alert(`[Notifikasi] ${payload.notification?.title}: ${payload.notification?.body}`);
+            console.log('Foreground notification:', payload);
+            if (Notification.permission === 'granted') {
+                new Notification(payload.notification?.title || 'Notifikasi', {
+                    body: payload.notification?.body,
+                    icon: '/assets/logo.png',
+                });
+            }
         });
 
         return () => unsubscribe();
-    }, [isNotifEnabled]); // Trigger ulang useEffect setiap kali nilai toggle berubah
+    }, [isNotifEnabled]);
 
-    // Aksi interaktif ketika tombol switch notifikasi diklik
+    // 3. Handle Toggle Switch
     const handleToggleChange = () => {
         const newValue = !isNotifEnabled;
         setIsNotifEnabled(newValue);
 
-        // Kirim perubahan status ke backend Laravel secara real-time
         axios
             .post('/toggle-notification', { enabled: newValue })
-            .then((res) => {
-                console.log(res.data.message);
-            })
+            .then((res) => console.log('Status notif diubah:', res.data))
             .catch((err) => {
-                console.error('Gagal mengubah status preferensi notifikasi:', err);
-                setIsNotifEnabled(!newValue); // Kembalikan ke posisi awal jika request gagal
+                console.error('Error:', err);
+                setIsNotifEnabled(!newValue); // Rollback jika gagal
             });
     };
 

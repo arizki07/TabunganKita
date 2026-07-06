@@ -3,37 +3,60 @@
 namespace App\Helpers;
 
 use App\Models\User;
+use Illuminate\Support\Facades\Log;
 use Kreait\Firebase\Messaging\CloudMessage;
 use Kreait\Firebase\Messaging\Notification;
+use Kreait\Firebase\Messaging\WebPushConfig;
+use Kreait\Firebase\Messaging\ApnsConfig;
 
 class NotificationHelper
 {
-    /**
-     * Fungsi Inti untuk mengirim notifikasi ke User tertentu
-     */
-    public static function sendToUser($userId, string $title, string $body, string $actionUrl = '/dashboard')
+    public static function sendToUser(int $userId, string $title, string $body, string $actionUrl = '/dashboard')
     {
         $user = User::find($userId);
 
-        // Jika user tidak ditemukan atau fcm_token kosong, batalkan pengiriman
         if (!$user || !$user->fcm_token || !$user->is_notification_enabled) {
-            return false; // Batalkan kirim jika user mematikan notifikasi
+            return false;
         }
 
         $messaging = app('firebase.messaging');
 
+        $webPushConfig = WebPushConfig::fromArray([
+            'notification' => [
+                'title' => $title,
+                'body' => $body,
+                'icon' => '/assets/logo.png',
+            ],
+            'fcm_options' => [
+                'link' => $actionUrl,
+            ],
+        ]);
+
+        $apnsConfig = ApnsConfig::fromArray([
+            'payload' => [
+                'aps' => [
+                    'sound' => 'default',
+                    'badge' => 1,
+                ],
+            ],
+        ]);
+
         $message = CloudMessage::withTarget('token', $user->fcm_token)
             ->withNotification(Notification::create($title, $body))
-            ->withData([
-                'action_url' => $actionUrl,
-                'click_action' => $actionUrl, // Cadangan untuk beberapa jenis device browser
-            ]);
+            ->withData(['action_url' => $actionUrl])
+            ->withWebPushConfig($webPushConfig)
+            ->withApnsConfig($apnsConfig);
 
         try {
             $messaging->send($message);
             return true;
         } catch (\Exception $e) {
-            \Log::error('FCM Helper Error: ' . $e->getMessage());
+
+            if (str_contains($e->getMessage(), 'InvalidRegistrationToken')) {
+                $user->update(['fcm_token' => null]);
+            }
+
+            Log::error('FCM Helper Error: ' . $e->getMessage());
             return false;
         }
     }
