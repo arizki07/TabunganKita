@@ -39,7 +39,7 @@ class TransactionController extends Controller
             $simbol = "➕ Pemasukan";
             $teksPesan = "Dana masuk sebesar Rp " . number_format($validated['amount'], 0, ',', '.') . " untuk '{$validated['title']}'.";
         } else {
-            $wallet->decrement('balance', $validated['amount']);
+            $wallet->decrement('expense', $validated['amount']);
             $simbol = "➖ Pengeluaran";
             $teksPesan = "Dana keluar sebesar Rp " . number_format($validated['amount'], 0, ',', '.') . " untuk '{$validated['title']}'.";
         }
