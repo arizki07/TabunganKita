@@ -14,7 +14,6 @@ export default function PrivacyTab({ className = '', auth, ...props }: any) {
         axios.post('/toggle-notification', { enabled: newValue }).catch(() => setIsNotifEnabled(!newValue));
     };
     const handleBiometricToggle = async () => {
-        // 1. Jika User ingin MEMATIKAN
         if (isBiometricEnabled) {
             try {
                 await axios.post('/toggle-biometric', { enabled: false });
@@ -25,23 +24,49 @@ export default function PrivacyTab({ className = '', auth, ...props }: any) {
             return;
         }
 
-        // 2. Jika User ingin MENGAKTIFKAN
         try {
             const { data: options } = await axios.get('/webauthn/register/options');
 
-            // Decode base64 dari server ke bentuk Uint8Array yang dibutuhkan browser
-            const challenge = Uint8Array.from(atob(options.challenge.replace(/-/g, '+').replace(/_/g, '/')), (c) => c.charCodeAt(0));
-            const userId = Uint8Array.from(atob(options.user.id.replace(/-/g, '+').replace(/_/g, '/')), (c) => c.charCodeAt(0));
+            // FUNGSI UTILITY AMAN UNTUK DECODE BASE64URL KE UINT8ARRAY
+            const bufferFromBase64Url = (base64url: string) => {
+                const padded = base64url.replace(/-/g, '+').replace(/_/g, '/');
+                const binary = window.atob(padded);
+                const bytes = new Uint8Array(binary.length);
+                for (let i = 0; i < binary.length; i++) {
+                    bytes[i] = binary.charCodeAt(i);
+                }
+                return bytes.buffer; // Harus berupa ArrayBuffer
+            };
+
+            // FUNGSI UTILITY AMAN UNTUK ENCODE ARRAYBUFFER KE BASE64URL
+            const base64UrlFromBuffer = (buffer: ArrayBuffer) => {
+                const bytes = new Uint8Array(buffer);
+                let binary = '';
+                for (let i = 0; i < bytes.byteLength; i++) {
+                    binary += String.fromCharCode(bytes[i]);
+                }
+                return window.btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
+            };
+
+            const challengeBuffer = bufferFromBase64Url(options.challenge);
+            const userIdBuffer = bufferFromBase64Url(options.user.id);
 
             const credential = (await navigator.credentials.create({
                 publicKey: {
-                    challenge: challenge,
-                    rp: { name: 'TabunganKita', id: options.rpId || window.location.hostname },
-                    user: { id: userId, name: options.user.name, displayName: options.user.displayName },
+                    challenge: challengeBuffer, // Menggunakan ArrayBuffer asli
+                    rp: {
+                        name: 'TabunganKita',
+                        id: options.rpId || window.location.hostname,
+                    },
+                    user: {
+                        id: userIdBuffer, // Menggunakan ArrayBuffer asli
+                        name: options.user.name,
+                        displayName: options.user.displayName,
+                    },
                     pubKeyCredParams: options.pubKeyCredParams,
                     authenticatorSelection: {
                         userVerification: 'required',
-                        authenticatorAttachment: 'platform', // Memaksa FaceID/TouchID bawaan device, bukan USB Key external
+                        authenticatorAttachment: 'platform',
                     },
                     timeout: 60000,
                 },
@@ -51,18 +76,17 @@ export default function PrivacyTab({ className = '', auth, ...props }: any) {
 
             const response = credential.response as AuthenticatorAttestationResponse;
 
-            // Encode kembali array buffer ke base64 agar bisa dikirim via JSON ke Laravel
+            // Encode kembali menggunakan fungsi utility yang aman
             const credentialData = {
                 id: credential.id,
-                rawId: btoa(String.fromCharCode(...new Uint8Array(credential.rawId))),
+                rawId: base64UrlFromBuffer(credential.rawId),
                 type: credential.type,
                 response: {
-                    clientDataJSON: btoa(String.fromCharCode(...new Uint8Array(response.clientDataJSON))),
-                    attestationObject: btoa(String.fromCharCode(...new Uint8Array(response.attestationObject))),
+                    clientDataJSON: base64UrlFromBuffer(response.clientDataJSON),
+                    attestationObject: base64UrlFromBuffer(response.attestationObject),
                 },
             };
 
-            // Kirim ke server untuk diverifikasi sekaligus mengaktifkan status is_biometric_enabled
             await axios.post('/webauthn/register/verify', credentialData);
 
             setIsBiometricEnabled(true);

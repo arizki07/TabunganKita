@@ -43,9 +43,9 @@ return new class extends Migration
         Schema::create('user_public_keys', function (Blueprint $table) {
             $table->id();
             $table->foreignId('user_id')->constrained()->onDelete('cascade');
-            $table->string('credential_id')->unique(); // ID unik dari iPhone
-            $table->text('public_key'); // Kunci publik
-            $table->unsignedInteger('counter'); // Counter untuk mencegah replay attack
+            $table->text('credential_id')->unique();
+            $table->text('public_key');
+            $table->unsignedInteger('counter');
             $table->timestamps();
         });
     }

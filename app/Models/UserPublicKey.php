@@ -13,6 +13,6 @@ class UserPublicKey extends Model
         'user_id',
         'credential_id',
         'public_key',
-        'sign_count',
+        'counter',
     ];
 }
