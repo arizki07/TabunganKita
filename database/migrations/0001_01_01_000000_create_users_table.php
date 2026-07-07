@@ -43,7 +43,7 @@ return new class extends Migration
         Schema::create('user_public_keys', function (Blueprint $table) {
             $table->id();
             $table->foreignId('user_id')->constrained()->onDelete('cascade');
-            $table->text('credential_id')->unique();
+            $table->string('credential_id')->unique();
             $table->text('public_key');
             $table->unsignedInteger('counter');
             $table->timestamps();
