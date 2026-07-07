@@ -123,15 +123,15 @@ class AuthenticatedSessionController extends Controller
 
     public function getLoginOptions(Request $request)
     {
-        $allowedCredentials = UserPublicKey::all()->map(function ($key) {
+        $allowedCredentials = \App\Models\UserPublicKey::all()->map(function ($key) {
             return [
                 'type' => 'public-key',
-                'id' => Base64UrlSafe::decode($key->credential_id)
+                'id' => $key->credential_id
             ];
         })->toArray();
 
         return response()->json([
-            'challenge' => Base64UrlSafe::encodeUnpadded(random_bytes(32)),
+            'challenge' => \ParagonIE\ConstantTime\Base64UrlSafe::encodeUnpadded(random_bytes(32)),
             'rpId' => 'tabungankita.ahmadrizki.my.id',
             'allowCredentials' => $allowedCredentials,
         ]);
