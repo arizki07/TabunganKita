@@ -4,6 +4,8 @@ namespace App\Http\Controllers\Auth;
 
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Auth\LoginRequest;
+use App\Models\User;
+use App\Models\UserPublicKey;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -98,7 +100,6 @@ class AuthenticatedSessionController extends Controller
         $type = $request->input('type');
         $response = $request->input('response');
 
-        /** @var \App\Models\User $user */
         $user = Auth::user();
 
         $decodedPublicKey = "...";
@@ -122,16 +123,40 @@ class AuthenticatedSessionController extends Controller
 
     public function getLoginOptions(Request $request)
     {
-        $user = \App\Models\User::where('email', $request->email)->firstOrFail();
-
-        $allowedCredentials = $user->publicKeys()->get()->map(function ($key) {
-            return ['type' => 'public-key', 'id' => base64_decode($key->credential_id)];
+        $allowedCredentials = UserPublicKey::all()->map(function ($key) {
+            return [
+                'type' => 'public-key',
+                'id' => Base64UrlSafe::decode($key->credential_id)
+            ];
         })->toArray();
 
         return response()->json([
-            'challenge' => \ParagonIE\ConstantTime\Base64UrlSafe::encodeUnpadded(random_bytes(32)),
+            'challenge' => Base64UrlSafe::encodeUnpadded(random_bytes(32)),
             'rpId' => 'tabungankita.ahmadrizki.my.id',
             'allowCredentials' => $allowedCredentials,
+        ]);
+    }
+
+    public function verifyLogin(Request $request)
+    {
+        $id = $request->input('id');
+
+        $userKey = UserPublicKey::where('credential_id', $id)->first();
+
+        if (!$userKey) {
+            return response()->json(['success' => false, 'message' => 'Kunci biometrik tidak dikenali.'], 401);
+        }
+
+        $user = User::find($userKey->user_id);
+
+        if (!$user || !$user->is_biometric_enabled) {
+            return response()->json(['success' => false, 'message' => 'Biometrik dinonaktifkan untuk akun ini.'], 403);
+        }
+        Auth::login($user, true);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Login berhasil!'
         ]);
     }
 }

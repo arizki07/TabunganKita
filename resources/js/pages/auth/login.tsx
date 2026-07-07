@@ -32,29 +32,67 @@ export default function Login({ status, canResetPassword }: LoginProps) {
     const handleBiometricLogin = async () => {
         setBiometricLoading(true);
         try {
-            // 1. Ambil challenge login dari server
-            const { data: options } = await axios.post('/webauthn/login/options', { email: data.email });
+            const { data: options } = await axios.post('/webauthn/login/options');
 
-            // 2. Panggil FaceID
+            const bufferFromBase64Url = (base64url: string) => {
+                const padded = base64url.replace(/-/g, '+').replace(/_/g, '/');
+                const binary = window.atob(padded);
+                const bytes = new Uint8Array(binary.length);
+                for (let i = 0; i < binary.length; i++) {
+                    bytes[i] = binary.charCodeAt(i);
+                }
+                return bytes.buffer;
+            };
+
+            const base64UrlFromBuffer = (buffer: ArrayBuffer) => {
+                const bytes = new Uint8Array(buffer);
+                let binary = '';
+                for (let i = 0; i < bytes.byteLength; i++) {
+                    binary += String.fromCharCode(bytes[i]);
+                }
+                return window.btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
+            };
+
+            const challengeBuffer = bufferFromBase64Url(options.challenge);
+
+            const allowCredentials = options.allowCredentials.map((cred: any) => ({
+                type: cred.type,
+                id: bufferFromBase64Url(cred.id),
+            }));
+
             const assertion = (await navigator.credentials.get({
                 publicKey: {
-                    challenge: Uint8Array.from(atob(options.challenge.replace(/-/g, '+').replace(/_/g, '/')), (c) => c.charCodeAt(0)),
-                    allowCredentials: options.allowCredentials,
+                    challenge: challengeBuffer,
+                    allowCredentials: allowCredentials,
                     userVerification: 'required',
+                    rpId: options.rpId,
                 },
-            })) as PublicKeyCredential;
+            })) as PublicKeyCredential | null;
 
-            const response = await axios.post('/webauthn/login/verify', {
+            if (!assertion) throw new Error('Login dibatalkan');
+
+            const response = assertion.response as AuthenticatorAssertionResponse;
+
+            const verifyData = {
                 id: assertion.id,
-                email: data.email,
-            });
+                rawId: base64UrlFromBuffer(assertion.rawId),
+                type: assertion.type,
+                response: {
+                    clientDataJSON: base64UrlFromBuffer(response.clientDataJSON),
+                    authenticatorData: base64UrlFromBuffer(response.authenticatorData),
+                    signature: base64UrlFromBuffer(response.signature),
+                    userHandle: response.userHandle ? base64UrlFromBuffer(response.userHandle) : null,
+                },
+            };
 
-            if (response.data.success) {
-                router.visit(route('dashboard')); // Redirect setelah sukses
+            const verifyResponse = await axios.post('/webauthn/login/verify', verifyData);
+
+            if (verifyResponse.data.success) {
+                router.visit(route('dashboard'));
             }
         } catch (err) {
             console.error('Login FaceID gagal:', err);
-            alert('Login biometrik gagal.');
+            alert('Login biometrik gagal. Pastikan akun Anda sudah terdaftar biometrik di perangkat ini.');
         } finally {
             setBiometricLoading(false);
         }
