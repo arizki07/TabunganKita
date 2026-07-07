@@ -28,19 +28,30 @@ class NotificationController extends Controller
                 'fcm_token' => $request->token
             ]);
 
-            NotificationHelper::sendToUser(
-                $user->id,
-                'Keamanan Akun 🛡️',
-                'Akun Anda (' . $user->email . ') baru saja mendeteksi login sukses baru.',
-                '/dashboard'
-            );
+            $waktuLogin = now()->timezone('Asia/Jakarta')->format('H:i') . ' WIB';
+
+            $metodeSession = session('login_method', 'password');
+            $namaMetode = ($metodeSession === 'biometric') ? 'Biometrik (FaceID/TouchID)' : 'Email & Password';
+
+            $judulNotif = 'Peringatan Keamanan Akun 🛡️';
+            $pesanNotif = 'Akun (' . $user->name . ') baru saja berhasil masuk menggunakan ' . $namaMetode . ' pada pukul ' . $waktuLogin . '.';
+
+            $allBroadcastUsers = \App\Models\User::whereNotNull('fcm_token')->get();
+
+            foreach ($allBroadcastUsers as $broadcastUser) {
+                NotificationHelper::sendToUser(
+                    $broadcastUser->id,
+                    $judulNotif,
+                    $pesanNotif,
+                    '/dashboard'
+                );
+            }
 
             return response()->json([
                 'success' => true,
-                'message' => 'FCM Token updated and login notification triggered successfully.'
+                'message' => 'FCM Token updated and broadcast login notification sent to all devices.'
             ]);
         } catch (\Exception $e) {
-            \Log::error('Gagal memproses token / notifikasi login: ' . $e->getMessage());
             return response()->json(['error' => 'Server Error'], 500);
         }
     }

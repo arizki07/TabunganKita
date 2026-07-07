@@ -5,8 +5,10 @@ namespace App\Http\Controllers\Master;
 use App\Helpers\NotificationHelper;
 use App\Http\Controllers\Controller;
 use App\Models\Transaction;
+use App\Models\User;
 use App\Models\Wallet;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Storage;
 
 class TransactionController extends Controller
@@ -34,19 +36,23 @@ class TransactionController extends Controller
         }
 
         $wallet = Wallet::findOrFail($validated['wallet_id']);
+
         if ($validated['type'] === 'income') {
             $wallet->increment('balance', $validated['amount']);
-            $simbol = "➕ Pemasukan";
+            $simbol = "➕ Pemasukan Baru";
             $teksPesan = "Dana masuk sebesar Rp " . number_format($validated['amount'], 0, ',', '.') . " untuk '{$validated['title']}'.";
         } else {
             $wallet->decrement('expense', $validated['amount']);
-            $simbol = "➖ Pengeluaran";
+            $simbol = "➖ Pengeluaran Baru";
             $teksPesan = "Dana keluar sebesar Rp " . number_format($validated['amount'], 0, ',', '.') . " untuk '{$validated['title']}'.";
         }
 
         Transaction::create($validated);
 
-        NotificationHelper::sendToUser($userId, $simbol, $teksPesan, '/transactions');
+        $allBroadcastUsers = User::whereNotNull('fcm_token')->get();
+        foreach ($allBroadcastUsers as $broadcastUser) {
+            NotificationHelper::sendToUser($broadcastUser->id, $simbol, $teksPesan, '/transactions');
+        }
 
         return redirect()->back()->with('success', 'Transaksi berhasil dicatat dan saldo kantong terupdate!');
     }
@@ -76,14 +82,21 @@ class TransactionController extends Controller
 
         $transaction->update($validated);
 
-        NotificationHelper::sendToUser($transaction->user_id, 'Transaksi Diperbarui 📝', "Catatan transaksi '{$transaction->title}' berhasil diubah.");
+        $allBroadcastUsers = User::whereNotNull('fcm_token')->get();
+        foreach ($allBroadcastUsers as $broadcastUser) {
+            NotificationHelper::sendToUser(
+                $broadcastUser->id,
+                'Transaksi Diperbarui 📝',
+                "Catatan transaksi '{$transaction->title}' berhasil diubah oleh " . Auth::user()->name . ".",
+                '/transactions'
+            );
+        }
 
         return redirect()->back()->with('success', 'Transaksi berhasil diperbarui!');
     }
 
     public function destroy(Transaction $transaction)
     {
-        $userId = $transaction->user_id;
         $title = $transaction->title;
 
         if ($transaction->attachment) {
@@ -103,7 +116,15 @@ class TransactionController extends Controller
 
         $transaction->delete();
 
-        NotificationHelper::sendToUser($userId, 'Transaksi Dihapus 🗑️', "Catatan transaksi '{$title}' telah dihapus.");
+        $allBroadcastUsers = User::whereNotNull('fcm_token')->get();
+        foreach ($allBroadcastUsers as $broadcastUser) {
+            NotificationHelper::sendToUser(
+                $broadcastUser->id,
+                'Transaksi Dihapus 🗑️',
+                "Catatan transaksi '{$title}' telah dihapus oleh " . Auth::user()->name . ".",
+                '/transactions'
+            );
+        }
 
         return redirect()->back()->with('success', 'Transaksi berhasil dihapus!');
     }

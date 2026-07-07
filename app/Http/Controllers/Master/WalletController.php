@@ -4,8 +4,10 @@ namespace App\Http\Controllers\Master;
 
 use App\Helpers\NotificationHelper;
 use App\Http\Controllers\Controller;
+use App\Models\User;
 use App\Models\Wallet;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
 use Inertia\Inertia;
 
 class WalletController extends Controller
@@ -42,7 +44,15 @@ class WalletController extends Controller
 
         $wallet = Wallet::create($data);
 
-        NotificationHelper::sendToUser($userId, 'Kantong Baru Dibuat! 💼', "Kantong '{$wallet->wallet_name}' berhasil ditambahkan ke sistem.");
+        $allBroadcastUsers = User::whereNotNull('fcm_token')->get();
+        foreach ($allBroadcastUsers as $broadcastUser) {
+            NotificationHelper::sendToUser(
+                $broadcastUser->id,
+                'Kantong Baru Dibuat! 💼',
+                "Kantong '{$wallet->wallet_name}' berhasil ditambahkan ke sistem oleh " . Auth::user()->name . ".",
+                '/dashboard'
+            );
+        }
 
         return redirect()->back()->with('success', 'Kantong baru berhasil dibuat!');
     }
@@ -58,19 +68,34 @@ class WalletController extends Controller
 
         $wallet->update($request->all());
 
-        NotificationHelper::sendToUser($wallet->user_id, 'Kantong Diperbarui ✏️', "Informasi kantong '{$wallet->wallet_name}' telah diubah.");
+        $allBroadcastUsers = User::whereNotNull('fcm_token')->get();
+        foreach ($allBroadcastUsers as $broadcastUser) {
+            NotificationHelper::sendToUser(
+                $broadcastUser->id,
+                'Kantong Diperbarui ✏️',
+                "Informasi kantong '{$wallet->wallet_name}' telah diubah oleh " . Auth::user()->name . ".",
+                '/dashboard'
+            );
+        }
 
         return redirect()->back()->with('success', 'Data kantong berhasil diperbarui!');
     }
 
     public function destroy(Wallet $wallet)
     {
-        $userId = $wallet->user_id;
         $name = $wallet->wallet_name;
 
         $wallet->delete();
 
-        NotificationHelper::sendToUser($userId, 'Kantong Dihapus 🗑️', "Kantong '{$name}' telah dihapus dari sistem.");
+        $allBroadcastUsers = User::whereNotNull('fcm_token')->get();
+        foreach ($allBroadcastUsers as $broadcastUser) {
+            NotificationHelper::sendToUser(
+                $broadcastUser->id,
+                'Kantong Dihapus 🗑️',
+                "Kantong '{$name}' telah dihapus dari sistem oleh " . Auth::user()->name . ".",
+                '/dashboard'
+            );
+        }
 
         return redirect()->back()->with('success', 'Kantong berhasil dihapus dari sistem!');
     }

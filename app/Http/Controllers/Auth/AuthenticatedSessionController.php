@@ -41,7 +41,7 @@ class AuthenticatedSessionController extends Controller
         $request->authenticate();
 
         $request->session()->regenerate();
-
+        session(['login_method' => 'password']);
         return redirect()->intended(route('dashboard', absolute: false));
     }
 
@@ -153,7 +153,7 @@ class AuthenticatedSessionController extends Controller
             return response()->json(['success' => false, 'message' => 'Biometrik dinonaktifkan untuk akun ini.'], 403);
         }
         Auth::login($user, true);
-
+        $request->session()->put('login_method', 'biometric');
         return response()->json([
             'success' => true,
             'message' => 'Login berhasil!'
