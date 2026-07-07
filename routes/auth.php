@@ -21,6 +21,9 @@ Route::middleware('guest')->group(function () {
 
     Route::post('login', [AuthenticatedSessionController::class, 'store']);
 
+    Route::post('/webauthn/login/options', [AuthenticatedSessionController::class, 'getLoginOptions']);
+    Route::post('/webauthn/login/verify', [AuthenticatedSessionController::class, 'verifyLogin']);
+
     Route::get('forgot-password', [PasswordResetLinkController::class, 'create'])
         ->name('password.request');
 
@@ -53,8 +56,7 @@ Route::middleware('auth')->group(function () {
 
     Route::get('/webauthn/register/options', [AuthenticatedSessionController::class, 'getRegistrationOptions']);
     Route::post('/webauthn/register/verify', [AuthenticatedSessionController::class, 'verifyRegistration']);
-    Route::post('/webauthn/login/options', [AuthenticatedSessionController::class, 'getLoginOptions']);
-    Route::post('/webauthn/login/verify', [AuthenticatedSessionController::class, 'verifyLogin']);
+
 
     Route::post('logout', [AuthenticatedSessionController::class, 'destroy'])
         ->name('logout');
